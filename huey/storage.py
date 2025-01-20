@@ -439,7 +439,7 @@ class RedisStorage(BaseStorage):
         self.conn.delete(self.queue_key)
 
     def add_to_schedule(self, data, ts, utc):
-        self.conn.zadd(self.schedule_key, {data: self.convert_ts(ts)})
+        self.conn.zadd(self.schedule_key, **{data: self.convert_ts(ts)})
 
     def read_schedule(self, ts):
         unix_ts = self.convert_ts(ts)
