@@ -19,7 +19,6 @@ from huey.consumer import Consumer
 from huey.exceptions import CancelExecution
 from huey.exceptions import ConfigurationError
 from huey.exceptions import HueyException
-from huey.exceptions import ResultTimeout
 from huey.exceptions import RetryTask
 from huey.exceptions import TaskException
 from huey.exceptions import TaskLockedException
@@ -304,8 +303,6 @@ class Huey(object):
         # Resolve the expiration time when the task is enqueued.
         if task.expires:
             task.resolve_expires(self.utc)
-
-        self._emit(S.SIGNAL_ENQUEUED, task)
 
         if self._immediate:
             self.execute(task)
@@ -597,22 +594,15 @@ class Huey(object):
     def add_schedule(self, task):
         data = self.serialize_task(task)
         eta = task.eta or datetime.datetime.fromtimestamp(0)
-        self.storage.add_to_schedule(data, eta)
+        self.storage.add_to_schedule(data, eta, self.utc)
         logger.info('Added task %s to schedule, eta %s', task.id, eta)
         self._emit(S.SIGNAL_SCHEDULED, task)
 
     def read_schedule(self, timestamp=None):
         if timestamp is None:
             timestamp = self._get_timestamp()
-        accum = []
-        for msg in self.storage.read_schedule(timestamp):
-            try:
-                task = self.deserialize_task(msg)
-            except Exception:
-                logger.exception('Unable to deserialize scheduled task.')
-            else:
-                accum.append(task)
-        return accum
+        return [self.deserialize_task(task)
+                for task in self.storage.read_schedule(timestamp)]
 
     def read_periodic(self, timestamp):
         if timestamp is None:
@@ -1008,7 +998,7 @@ class Result(object):
                 if timeout and time_clock() - start >= timeout:
                     if revoke_on_timeout:
                         self.revoke()
-                    raise ResultTimeout('timed out waiting for result')
+                    raise HueyException('timed out waiting for result')
                 if delay > max_delay:
                     delay = max_delay
                 if self._get(preserve) is EmptyData:
